@@ -29,9 +29,16 @@ namespace ESLDCore
         public List<ESLDHailer> hailers = new List<ESLDHailer>();
         private List<ESLDBeacon> nearBeacons = new List<ESLDBeacon>();
         private static Dictionary<Vessel, List<ESLDBeacon>> farBeaconVessels = new Dictionary<Vessel, List<ESLDBeacon>>();
+        private static Dictionary<Vessel, List<ModuleESLDLens>> lensVessels = new Dictionary<Vessel, List<ModuleESLDLens>>();
+        private static List<ModuleESLDLens> farLenses = new List<ModuleESLDLens>();
         private static List<PartModule> createdModules = new List<PartModule>();
         private TargetDetails selectedTarget;
         private int currentBeaconIndex = -1;
+
+        public static List<ModuleESLDLens> Lenses
+        {
+            get => farLenses;
+        }
 
         protected Rect window;
 
@@ -352,6 +359,31 @@ namespace ESLDCore
             return beacons;
         }
 
+        public static List<ModuleESLDLens> QueryVesselLenses(ProtoVessel vesselToQuery)
+        {
+            List<ModuleESLDLens> lenses = new List<ModuleESLDLens>();
+            List<ProtoPartSnapshot> parts = vesselToQuery.protoPartSnapshots;
+            int partCount = parts.Count;
+            for (int i = 0; i < partCount; i++)
+            {
+                List<ProtoPartModuleSnapshot> modules = parts[i].modules.FindAll(m => m.moduleName == "ModuleESLDLens");
+                int moduleCount = modules.Count;
+                for (int j = 0; j < moduleCount; j++)
+                {
+                    ModuleESLDLens lens = (ModuleESLDLens)modules[j].moduleRef;
+                    if (lens == null)
+                    {
+                        lens = ModuleESLDLens.InstantiateFromSnapshot(parts[i], modules[j], j);
+                        createdModules.Add(lens);
+                    }
+
+                    if (lens.activated && lens.moduleIsEnabled)
+                        lenses.Add(lens);
+                }
+            }
+            return lenses;
+        }
+
         public static HailerGUI ActivateGUI(Vessel hostVessel)
         {
             HailerGUI hailerGUI = openWindows.FirstOrDefault(gui => gui.vessel == hostVessel);
@@ -400,7 +432,10 @@ namespace ESLDCore
                 }
                 if (farBeaconVessels[queryVessel].Count > 0)
                     targetDetails.Add(new TargetDetails(queryVessel, this));
+                if (!lensVessels.ContainsKey(queryVessel))
                 {
+                    lensVessels.Add(queryVessel, QueryVesselLenses(queryVessel.protoVessel));
+                    farLenses.AddRange(lensVessels[queryVessel]);
                 }
             }
         }
@@ -431,6 +466,8 @@ namespace ESLDCore
                 }
                 createdModules.Clear();
                 farBeaconVessels.Clear();
+                farLenses.Clear();
+                lensVessels.Clear();
 
                 HailerButton.Instance.button.SetFalse(false);
             }
@@ -450,6 +487,20 @@ namespace ESLDCore
                 }
                 farBeaconVessels.Remove(vessel);
             }
+
+            if (lensVessels.ContainsKey(vessel))
+            {
+                for (int i = lensVessels[vessel].Count - 1; i >= 0; i--)
+                {
+                    farLenses.Remove(lensVessels[vessel][i]);
+                    if (createdModules.Contains(lensVessels[vessel][i]))
+                    {
+                        Destroy(lensVessels[vessel][i]);
+                        createdModules.Remove(lensVessels[vessel][i]);
+                    }
+                }
+                lensVessels.Remove(vessel);
+            }
         }
 
         public void VesselDestroyed(Vessel vessel)
@@ -465,8 +516,13 @@ namespace ESLDCore
             if (!farBeaconVessels.ContainsKey(vessel))
             {
                 farBeaconVessels.Add(vessel, QueryVesselFarBeacons(vessel.protoVessel));
+            }
             if (farBeaconVessels[vessel].Count > 0)
                 targetDetails.Add(new TargetDetails(vessel, this));
+            if (!lensVessels.ContainsKey(vessel))
+            {
+                lensVessels.Add(vessel, QueryVesselLenses(vessel.protoVessel));
+                farLenses.AddRange(lensVessels[vessel]);
             }
         }
 
@@ -486,6 +542,11 @@ namespace ESLDCore
                 }
                 if (farBeaconVessels[vessel].Count > 0)
                     targetDetails.Add(new TargetDetails(vessel, this));
+                if (!lensVessels.ContainsKey(vessel))
+                {
+                    lensVessels.Add(vessel, QueryVesselLenses(vessel.protoVessel));
+                    farLenses.AddRange(lensVessels[vessel]);
+                }
             }
         }
 
@@ -817,7 +878,7 @@ namespace ESLDCore
                     return;
                 }
                 float tripdist = Vector3.Distance(hailerGUI.nearBeacon.Vessel.GetWorldPos3D(), targetVessel.GetWorldPos3D());
-                tripCost = hailerGUI.nearBeacon.GetTripBaseCost(tripdist, hailerGUI.tonnage);
+                tripCost = hailerGUI.nearBeacon.GetTripBaseCost(tripdist / ModuleESLDLens.GetLensingGainRatio(hailerGUI.nearBeacon.Vessel.GetWorldPos3D(), targetVessel.GetWorldPos3D(), farLenses), hailerGUI.tonnage);
                 tripCost = hailerGUI.nearBeacon.GetTripFinalCost(tripCost, hailerGUI.vessel, targetVessel, hailerGUI.tonnage, hailerGUI.HCUPartsList);
                 //float cost = tripCost;
                 affordable = true;
@@ -840,7 +901,7 @@ namespace ESLDCore
                     for (int i = farBeaconVessels[targetVessel].Count - 1; i >= 0; i--)
                     {
                         precision = Math.Min(farBeaconVessels[targetVessel][i].GetTripSpread(tripdist), precision);
-                        float possibleReturnCost = farBeaconVessels[targetVessel][i].GetTripBaseCost(tripdist, hailerGUI.tonnage);
+                        float possibleReturnCost = farBeaconVessels[targetVessel][i].GetTripBaseCost(tripdist / ModuleESLDLens.GetLensingGainRatio(targetVessel.GetWorldPos3D(), hailerGUI.nearBeacon.Vessel.GetWorldPos3D(), farLenses), hailerGUI.tonnage);
                         bool beaconCanAfford = false;
                         if (returnFuelCheck)
                         {

@@ -275,7 +275,7 @@ namespace ESLDCore
         {
             float tripDist = Vector3.Distance(vessel.GetWorldPos3D(), destination.GetWorldPos3D());
             float tonnage = target.GetTotalMass();
-            float cost = GetTripFinalCost(GetTripBaseCost(tripDist, tonnage), target, destination, tonnage, unsafeParts);
+            float cost = GetTripFinalCost(GetTripBaseCost(tripDist / ModuleESLDLens.GetLensingGainRatio(Vessel.GetWorldPos3D(), target.GetWorldPos3D(), HailerGUI.Lenses), tonnage), target, destination, tonnage, unsafeParts);
             HailerGUI.PathCheck pathCheck = new HailerGUI.PathCheck(vessel, destination, gLimitEff);
             if (pathCheck.clear)
             {
