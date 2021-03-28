@@ -121,6 +121,9 @@ namespace ESLDCore
         [KSPField(isPersistant = true)]
         public double massBonus = 1;
 
+        [KSPField]
+        public string infoLine = "";
+
         public const string RnodeName = "RESOURCE";
         Logger log = new Logger("ESLDCore:ESLDBeacons: ");
 
@@ -768,6 +771,10 @@ namespace ESLDCore
                     break;
                 case ("LB100"):
                     info.AppendLine("Best for distances above 1Gm.");
+                    break;
+                default:
+                    if (!String.IsNullOrEmpty(infoLine))
+                        info.AppendLine(infoLine);
                     break;
             }
             info.AppendLine("Gravity limit: " + gLimit + "g");
