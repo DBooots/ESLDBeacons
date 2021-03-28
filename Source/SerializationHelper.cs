@@ -1,67 +1,94 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Xml.Serialization;
 
 namespace ESLDCore
 {
     public static class SerializationHelper
     {
-        public static List<T> LoadObjects<T>(this PartModule partModule, string nodeName, ConfigNode saveNode, int moduleIndex, string identifierKey = "name", bool removeUnsaved = false) where T : class, IConfigNode, new()
+        public static string SerializeObject<T>(T toSerialize)
         {
-            return LoadObjects<T>(nodeName, saveNode, partModule.part.partInfo.partConfig.GetNodes("MODULE", "name", partModule.GetType().Name)[moduleIndex], identifierKey, removeUnsaved);
-        }
-        public static List<T> LoadObjects<T>(this PartModule partModule, string nodeName, ConfigNode saveNode, string identifierKey = "name", bool removeUnsaved = false) where T : class, IConfigNode, new()
-        {
-            return LoadObjects<T>(nodeName, saveNode, partModule.part.partInfo.partConfig.GetNodes("MODULE", "name", partModule.GetType().Name)[0], identifierKey, removeUnsaved);
-        }
-
-        public static List<T> LoadObjects<T>(string nodeName, ConfigNode saveNode, ConfigNode cfgNode, string identifierKey = "name", bool removeUnsaved = false) where T : class, IConfigNode, new()
-        {
-            List<T> objects = new List<T>();
-            if (!saveNode.HasNode(nodeName) && !cfgNode.HasNode(nodeName))
-                return objects;
-
-            ConfigNode[] nodes = cfgNode.GetNodes(nodeName);
-            ConfigNode[] savedNodes = saveNode.GetNodes(nodeName);
-
-            for (int i = 0; i < nodes.Length; i++)
+            XmlSerializer xmlSerializer = new XmlSerializer(toSerialize.GetType());
+            using (StringWriter textWriter = new StringWriter())
             {
-                ConfigNode savedNode = savedNodes.FirstOrDefault(n => n.GetValue(identifierKey) == nodes[i].GetValue(identifierKey));
-                if (removeUnsaved && savedNode == null)
-                    continue;
-                T obj = new T();
-                obj.Load(nodes[i]);
-                if (savedNode != null)
-                    obj.Load(savedNode);
-                objects.Add(obj);
+                xmlSerializer.Serialize(textWriter, toSerialize);
+                return textWriter.ToString();
             }
-            for (int i = 0; i < savedNodes.Length; i++)
-            {
-                if (nodes.Any(n => n.GetValue(identifierKey) == savedNodes[i].GetValue(identifierKey)))
-                    continue;
-                T obj = new T();
-                obj.Load(savedNodes[i]);
-                objects.Add(obj);
-            }
-
-            return objects;
         }
-
-        public static void LoadObjects<T>(List<T> objects, string nodeName, ConfigNode node, Func<T, string> identifierSelector, string identifierKey = "name") where T : class, IConfigNode, new()
+        public static T DeserializeObject<T>(string serializedObject)
         {
-            ConfigNode[] nodes = node.GetNodes(nodeName);
-            for (int i = 0; i < nodes.Length; i++)
+            XmlSerializer xmlSerializer = new XmlSerializer(typeof(T));
             {
-                int existingItem = objects.FindIndex(o => identifierSelector(o) == nodes[i].GetValue(identifierKey));
-                if (existingItem < 0)
+                using (StringReader textReader = new StringReader(serializedObject))
                 {
-                    T newItem = new T();
-                    objects.Add(newItem);
-                    newItem.Load(nodes[i]);
+                    return (T)xmlSerializer.Deserialize(textReader);
                 }
-                else
-                    objects[existingItem].Load(nodes[i]);
             }
+        }
+
+        public static bool LoadObjectFromConfig<T>(T obj, ConfigNode node)
+        {
+            bool success = true;
+            /*if (obj is IConfigNode interfaceObj)
+            {
+                interfaceObj.Load(node);
+                return true;
+            }*/
+            IEnumerable<FieldInfo> fields = typeof(T).GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(fi => fi.GetCustomAttribute<KSPField>()?.isPersistant == true);
+            foreach (FieldInfo field in fields)
+            {
+                string name = field.Name;
+                Type type = field.FieldType;
+                if (type.IsSubclassOf(typeof(IConfigNode)))
+                    if (node.HasNode(name))
+                    {
+                        object fObj = field.GetValue(obj);
+                        if (fObj == null)
+                        {
+                            fObj = type.GetConstructor(BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic, null, new Type[0], null)?.Invoke(new object[0]);
+                            if (fObj == null)
+                                continue;
+                        }
+                        ((IConfigNode)fObj).Load(node.GetNode(name));
+                    }
+                    else
+                        success = false;
+                /*else if (type.IsArray)
+                {
+
+                }
+                else if (type.IsGenericType && type.Name.StartsWith("List"))
+                {
+
+                }*/
+                else if (node.HasValue(field.Name))
+                {
+                    if (type == typeof(string))
+                        field.SetValue(obj, node.GetValue(name));
+                    else if (type == typeof(bool))
+                        field.SetValue(obj, bool.Parse(node.GetValue(name)));
+                    else if (type == typeof(int))
+                        field.SetValue(obj, int.Parse(node.GetValue(name)));
+                    else if (type == typeof(long))
+                        field.SetValue(obj, long.Parse(node.GetValue(name)));
+                    else if (type == typeof(float))
+                        field.SetValue(obj, float.Parse(node.GetValue(name)));
+                    else if (type == typeof(uint))
+                        field.SetValue(obj, uint.Parse(node.GetValue(name)));
+                    else if (type == typeof(ulong))
+                        field.SetValue(obj, ulong.Parse(node.GetValue(name)));
+                    else if (type == typeof(double))
+                        field.SetValue(obj, double.Parse(node.GetValue(name)));
+                    else if (type == typeof(Guid))
+                        field.SetValue(obj, Guid.Parse(node.GetValue(name)));
+                    else
+                        success = false;
+                }
+            }
+            return success;
         }
     }
 }

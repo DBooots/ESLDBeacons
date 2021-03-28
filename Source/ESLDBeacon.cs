@@ -2,12 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-//using System.Threading.Tasks;
 using UnityEngine;
 
 namespace ESLDCore
 {
-    public class ESLDBeacon : PartModule, IBeacon
+    public class ESLDBeacon : PartModule, ISerializationCallbackReceiver
     {
         // Activation animation
         [KSPField]
@@ -32,7 +31,7 @@ namespace ESLDCore
 
         // Beacon model (from part config).
         // Can be any string, but overrides cost parameters when equal to one of the original 4 models.
-        [KSPField(isPersistant = true)]
+        [KSPField]
         public string beaconModel = string.Empty;
 
         // Cost equation:
@@ -100,7 +99,9 @@ namespace ESLDCore
 
         public List<ESLDJumpResource> JumpResources { get => jumpResources; }
         protected List<ESLDJumpResource> jumpResources = new List<ESLDJumpResource>();
-        
+        [SerializeField]
+        private List<string> serializedJumpResources = new List<string>();
+
         public bool UnsafeTransfer { get => !hasHCU; }
         public bool CarriesVelocity { get => !hasAMU; }
         public string Description { get => beaconModel; }
@@ -122,6 +123,33 @@ namespace ESLDCore
         Logger log = new Logger("ESLDCore:ESLDBeacons: ");
 
         private static int ECid = -1;
+        public static Dictionary<int, ESLDBeacon> SnapshotModules { get; } = new Dictionary<int, ESLDBeacon>();
+
+        public static ESLDBeacon InstantiateFromSnapshot(ProtoPartSnapshot partSnapshot, ProtoPartModuleSnapshot moduleSnapshot, int index = 0)
+        {
+            if (moduleSnapshot.moduleName != "ESLDBeacon")
+                return null;
+
+            int instanceID = -1;
+            if (moduleSnapshot.moduleValues.TryGetValue("__snapshottedModuleInstanceID", ref instanceID))
+            {
+                if (SnapshotModules.ContainsKey(instanceID))
+                    return SnapshotModules[instanceID];
+                else
+                    moduleSnapshot.moduleValues.RemoveValue("__snapshottedModuleInstanceID");
+            }
+
+            ESLDBeacon beacon = UnityEngine.Component.Instantiate<ESLDBeacon>(PartLoader.getPartInfoByName(partSnapshot.partName).partPrefab.FindModulesImplementing<ESLDBeacon>()[index]);
+            //moduleSnapshot.moduleRef = beacon;    // Can't do this because it breaks game saving...
+            instanceID = beacon.GetInstanceID();
+            moduleSnapshot.moduleValues.AddValue("__snapshottedModuleInstanceID", instanceID);
+            SnapshotModules.Add(instanceID, beacon);
+            beacon.part = new Part() { vessel = partSnapshot.pVesselRef.vesselRef };
+            beacon.snapshot = moduleSnapshot;
+            SerializationHelper.LoadObjectFromConfig(beacon, moduleSnapshot.moduleValues);
+            beacon.OnLoad(moduleSnapshot.moduleValues);
+            return beacon;
+        }
 
         public override void OnStart(StartState state)
         {
@@ -162,8 +190,21 @@ namespace ESLDCore
         public override void OnLoad(ConfigNode node)
         {
             base.OnLoad(node);
-
-            jumpResources = SerializationHelper.LoadObjects<ESLDJumpResource>(this, RnodeName, node);
+            
+            foreach (ConfigNode rNode in node.GetNodes(RnodeName))
+            {
+                ESLDJumpResource existingResource = jumpResources.Find(r => String.Equals(r.name, rNode.GetValue("name")));
+                if (existingResource == null)
+                {
+                    existingResource = new ESLDJumpResource();
+                    existingResource.Load(rNode);
+                    jumpResources.Add(existingResource);
+                }
+                else
+                {
+                    existingResource.Load(rNode);
+                }
+            }
 
             if (!node.HasValue("gLimitEff"))
                 gLimitEff = gLimit;
@@ -728,6 +769,34 @@ namespace ESLDCore
             foreach (ESLDJumpResource Jresource in jumpResources)
                 info.AppendFormat("<b>{0}:</b> Ratio: {1}", Jresource.name, Jresource.ratio.ToString("F2")).AppendLine();
             return info.ToString().TrimEnd(Environment.NewLine.ToCharArray());
+        }
+
+        public void OnBeforeSerialize()
+        {
+            serializedJumpResources.Clear();
+            foreach(ESLDJumpResource resource in jumpResources)
+            {
+                serializedJumpResources.Add(SerializationHelper.SerializeObject(resource));
+            }
+        }
+
+        public void OnAfterDeserialize()
+        {
+            jumpResources.Clear();
+            foreach(string resource in serializedJumpResources)
+            {
+                jumpResources.Add(SerializationHelper.DeserializeObject<ESLDJumpResource>(resource));
+            }
+            serializedJumpResources.Clear();
+        }
+
+        public void OnDestroy()
+        {
+            if (SnapshotModules.ContainsKey(this.GetInstanceID()))
+            {
+                this.snapshot.moduleValues.RemoveValues("__snapshottedModuleInstanceID");
+                SnapshotModules.Remove(this.GetInstanceID());
+            }
         }
     }
 

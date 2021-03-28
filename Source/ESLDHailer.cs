@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-//using System.Threading.Tasks;
 using UnityEngine;
 
 namespace ESLDCore
@@ -32,7 +31,7 @@ namespace ESLDCore
                 }
             }
         }
-        private IBeacon nearBeacon = null;
+        private ESLDBeacon nearBeacon = null;
 
         [KSPField(guiActive = false, isPersistant = true)]
         public bool hailerActive = false;
@@ -110,9 +109,9 @@ namespace ESLDCore
             nearBeaconRelVel = Vector3.Magnitude(vessel.obt_velocity - nearBeacon.Vessel.obt_velocity);
         }
 
-        private IBeacon LimitedBeaconSearch()
+        private ESLDBeacon LimitedBeaconSearch()
         {
-            IBeacon nearBeacon = null;
+            ESLDBeacon nearBeacon = null;
             float distance = float.MaxValue;
             for (int i = FlightGlobals.VesselsLoaded.Count - 1; i >= 0; i--)
             {

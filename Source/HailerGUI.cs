@@ -25,11 +25,11 @@ namespace ESLDCore
         public static List<HailerGUI> openWindows = new List<HailerGUI>();
 
         public Vessel vessel = null;
-        public IBeacon nearBeacon;
+        public ESLDBeacon nearBeacon;
         public List<ESLDHailer> hailers = new List<ESLDHailer>();
-        private List<IBeacon> nearBeacons = new List<IBeacon>();
-        private static Dictionary<Vessel, List<ProtoBeacon>> farBeaconVessels = new Dictionary<Vessel, List<ProtoBeacon>>();
-        private static List<ProtoBeacon> farBeacons = new List<ProtoBeacon>();
+        private List<ESLDBeacon> nearBeacons = new List<ESLDBeacon>();
+        private static Dictionary<Vessel, List<ESLDBeacon>> farBeaconVessels = new Dictionary<Vessel, List<ESLDBeacon>>();
+        private static List<PartModule> createdModules = new List<PartModule>();
         private TargetDetails selectedTarget;
         private int currentBeaconIndex = -1;
 
@@ -91,7 +91,7 @@ namespace ESLDCore
             switch (displayMode)
             {
                 case DisplayMode.Selection:
-                    if (farBeacons.Count <= 0 || nearBeacons.Count <= 0 || nearBeacon == null)
+                    if (nearBeacons.Count <= 0 || nearBeacon == null)
                         GUILayout.Label("No active beacons found.");
                     else
                     {
@@ -102,6 +102,8 @@ namespace ESLDCore
                             if (vessel.GetCrewCount() > 0) GUILayout.Label("Transfer will kill crew.");
                             if (HCUPartFailures.Count > 0) GUILayout.Label("Some resources will destabilize.");
                         }
+                        if (targetDetails.Count == 0)
+                            GUILayout.Label("No active target beacons found.");
                         for (int i = targetDetails.Count - 1; i >= 0; i--)
                         {
                             GUIStyle fuelstate = targetDetails[i].affordable ? (targetDetails[i].pathCheck.clear ? buttonHasFuel : buttonNoPath) : buttonNoFuel;
@@ -325,9 +327,9 @@ namespace ESLDCore
             }
         }
 
-        public static List<ProtoBeacon> QueryVesselFarBeacons(ProtoVessel vesselToQuery)
+        public static List<ESLDBeacon> QueryVesselFarBeacons(ProtoVessel vesselToQuery)
         {
-            List<ProtoBeacon> beacons = new List<ProtoBeacon>();
+            List<ESLDBeacon> beacons = new List<ESLDBeacon>();
             List<ProtoPartSnapshot> parts = vesselToQuery.protoPartSnapshots;
             int partCount = parts.Count;
             for (int i = 0; i < partCount; i++)
@@ -336,10 +338,15 @@ namespace ESLDCore
                 int moduleCount = modules.Count;
                 for (int j = 0; j < moduleCount; j++)
                 {
-                    ProtoBeacon protoBeacon = new ProtoBeacon(modules[j].moduleValues, parts[i].partInfo.partConfig.GetNodes("MODULE", "name", "ESLDBeacon")[j]);
-                    protoBeacon.Vessel = vesselToQuery.vesselRef;
-                    if (protoBeacon.activated && protoBeacon.moduleIsEnabled && protoBeacon.jumpTargetable)
-                        beacons.Add(protoBeacon);
+                    ESLDBeacon beacon = (ESLDBeacon)modules[j].moduleRef;
+                    if (beacon == null)
+                    {
+                        beacon = ESLDBeacon.InstantiateFromSnapshot(parts[i], modules[j], j);
+                        createdModules.Add(beacon);
+                    }
+
+                    if (beacon.activated && beacon.moduleIsEnabled && beacon.jumpTargetable)
+                        beacons.Add(beacon);
                 }
             }
             return beacons;
@@ -372,8 +379,8 @@ namespace ESLDCore
         {
             openWindows.Add(this);
             GameEvents.onVesselWasModified.Add(VesselWasModified);
-            GameEvents.onVesselGoOffRails.Add(VesselOffRails);
-            GameEvents.onVesselGoOnRails.Add(VesselOnRails);
+            GameEvents.onVesselLoaded.Add(VesselLoaded);
+            GameEvents.onVesselUnloaded.Add(VesselUnloaded);
             GameEvents.onNewVesselCreated.Add(VesselCreated);
             GameEvents.onVesselCreate.Add(VesselCreated);
             GameEvents.onVesselWillDestroy.Add(VesselDestroyed);
@@ -385,16 +392,16 @@ namespace ESLDCore
             for (int i = hailers.Count - 1; i >= 0; i--)
                 hailers[i].AttachedGui = this;
 
-            List<Vessel> vesselsToQuery = FlightGlobals.VesselsUnloaded;
-            for (int i = vesselsToQuery.Count - 1; i >= 0; i--)
+            foreach (Vessel queryVessel in FlightGlobals.VesselsUnloaded)
             {
-                if (!farBeaconVessels.ContainsKey(vesselsToQuery[i]))
+                if (!farBeaconVessels.ContainsKey(queryVessel))
                 {
-                    farBeaconVessels.Add(vesselsToQuery[i], QueryVesselFarBeacons(vesselsToQuery[i].protoVessel));
-                    farBeacons.AddRange(farBeaconVessels[vesselsToQuery[i]]);
+                    farBeaconVessels.Add(queryVessel, QueryVesselFarBeacons(queryVessel.protoVessel));
                 }
-                if (farBeaconVessels[vesselsToQuery[i]].Count > 0)
-                    targetDetails.Add(new TargetDetails(vesselsToQuery[i], this));
+                if (farBeaconVessels[queryVessel].Count > 0)
+                    targetDetails.Add(new TargetDetails(queryVessel, this));
+                {
+                }
             }
         }
 
@@ -404,53 +411,69 @@ namespace ESLDCore
                 hailers[i].AttachedGui = null;
 
             GameEvents.onVesselWasModified.Remove(VesselWasModified);
-            GameEvents.onVesselGoOffRails.Remove(VesselOffRails);
-            GameEvents.onVesselGoOnRails.Remove(VesselOnRails);
+            GameEvents.onVesselLoaded.Remove(VesselLoaded);
+            GameEvents.onVesselUnloaded.Remove(VesselUnloaded);
             GameEvents.onNewVesselCreated.Remove(VesselCreated);
             GameEvents.onVesselCreate.Remove(VesselCreated);
             GameEvents.onVesselWillDestroy.Remove(VesselDestroyed);
-            Destroy(predictionGameObject);
+
+            if (predictionGameObject != null)
+                Destroy(predictionGameObject);
+
             openWindows.Remove(this);
             if (openWindows.Count == 0)
+            {
+                // With no open windows, we're about to lose visibility and control of these static lists.
+                // Better to clear them and rebuild than try to cache them.
+                foreach (PartModule module in createdModules)
+                {
+                    Destroy(module);
+                }
+                createdModules.Clear();
+                farBeaconVessels.Clear();
+
                 HailerButton.Instance.button.SetFalse(false);
+            }
+        }
+
+        public static void RemoveFarVessel(Vessel vessel)
+        {
+            if (farBeaconVessels.ContainsKey(vessel))
+            {
+                for (int i = farBeaconVessels[vessel].Count - 1; i >= 0; i--)
+                {
+                    if (createdModules.Contains(farBeaconVessels[vessel][i]))
+                    {
+                        Destroy(farBeaconVessels[vessel][i]);
+                        createdModules.Remove(farBeaconVessels[vessel][i]);
+                    }
+                }
+                farBeaconVessels.Remove(vessel);
+            }
         }
 
         public void VesselDestroyed(Vessel vessel)
         {
-            if (farBeaconVessels.ContainsKey(vessel))
-            {
-                for (int i = farBeaconVessels[vessel].Count - 1; i >= 0; i--)
-                    farBeacons.Remove(farBeaconVessels[vessel][i]);
-                farBeaconVessels.Remove(vessel);
-            }
             targetDetails.RemoveAll(tgt => tgt.targetVessel == vessel);
+            RemoveFarVessel(vessel);
         }
 
-        public void VesselOnRails(Vessel vessel)
+        public void VesselUnloaded(Vessel vessel)
         {
             if (vessel == this.vessel)
                 return;
-            if (!vessel.loaded)
+            if (!farBeaconVessels.ContainsKey(vessel))
             {
-                if (!farBeaconVessels.ContainsKey(vessel))
-                {
-                    farBeaconVessels.Add(vessel, QueryVesselFarBeacons(vessel.protoVessel));
-                    farBeacons.AddRange(farBeaconVessels[vessel]);
-                }
-                if (farBeaconVessels[vessel].Count > 0)
-                    targetDetails.Add(new TargetDetails(vessel, this));
+                farBeaconVessels.Add(vessel, QueryVesselFarBeacons(vessel.protoVessel));
+            if (farBeaconVessels[vessel].Count > 0)
+                targetDetails.Add(new TargetDetails(vessel, this));
             }
         }
 
-        public void VesselOffRails(Vessel vessel)
+        public void VesselLoaded(Vessel vessel)
         {
-            if (farBeaconVessels.ContainsKey(vessel))
-            {
-                for (int i = farBeaconVessels[vessel].Count - 1; i >= 0; i--)
-                    farBeacons.Remove(farBeaconVessels[vessel][i]);
-                farBeaconVessels.Remove(vessel);
-            }
             targetDetails.RemoveAll(tgt => tgt.targetVessel == vessel);
+            RemoveFarVessel(vessel);
         }
 
         public void VesselCreated(Vessel vessel)
@@ -460,7 +483,6 @@ namespace ESLDCore
                 if (!farBeaconVessels.ContainsKey(vessel))
                 {
                     farBeaconVessels.Add(vessel, QueryVesselFarBeacons(vessel.protoVessel));
-                    farBeacons.AddRange(farBeaconVessels[vessel]);
                 }
                 if (farBeaconVessels[vessel].Count > 0)
                     targetDetails.Add(new TargetDetails(vessel, this));
@@ -767,7 +789,7 @@ namespace ESLDCore
             public PathCheck pathCheck;
             public float precision = 0;
             public float returnCost = 0;
-            public ProtoBeacon returnBeacon = null;
+            public ESLDBeacon returnBeacon = null;
             public bool returnFuelCheck = false;
             public bool returnAffordable = false;
 
