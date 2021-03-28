@@ -82,6 +82,8 @@ namespace ESLDCore
         [KSPField]
         public bool jumpTargetable = true;
 
+        public static float galaxyScalar = 1;
+
         [KSPField]
         public bool needsResourcesToBoot = false;
         
@@ -216,6 +218,24 @@ namespace ESLDCore
                 jumpResources.Add(new ESLDJumpResource("Karborundum", ratio: 1));
             }
             SetFieldsEventsActions(activated);
+
+            ConfigNode[] settingsNode = GameDatabase.Instance.GetConfigNodes("ESLDSettings");
+            if (settingsNode.Length < 1)
+            {
+                ConfigNode save = new ConfigNode();
+                ConfigNode data = new ConfigNode("ESLDSettings");
+                data.AddValue("galaxyScalar", 1);
+                save.AddNode(data);
+                Debug.Log("Creating ESLD Settings file.");
+                save.Save("GameData/ESLDBeacons/ESLDSettings.cfg");
+            }
+            else
+            {
+                if (float.TryParse(settingsNode[0].GetValue("galaxyScalar"), out float loadGalaxyScalar))
+                    galaxyScalar = loadGalaxyScalar;
+                else
+                    Debug.LogError("Did not load ESLD settings.");
+            }
         }
 
         public override void OnSave(ConfigNode node)
@@ -364,6 +384,7 @@ namespace ESLDCore
             => GetTripBaseCost(tripdist, tonnage, distPenalty, distPow, baseMult, massFctr, massExp, coef, baseCost, beaconModel, multiplier);
         public static float GetTripBaseCost(float tripdist, float tonnage, float distPenalty, float distPow, float baseMult, float massFctr, float massExp, float coef, float baseCost, string beaconModel = "", float multiplier = 1)
         {
+            tripdist *= galaxyScalar;
             float yardstick = Mathf.Pow(13599840256, 1 / (distPow + 1)); //Math.Sqrt(Math.Sqrt(13599840256));
             float distPenaltyCost = 0;
             switch (beaconModel)
