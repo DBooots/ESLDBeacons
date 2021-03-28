@@ -468,6 +468,10 @@ namespace ESLDCore
                 }
                 modifiers.Add(hcuStr + ".");
             }
+
+            float lensGain = ModuleESLDLens.GetLensingGainRatio(beacon.GetWorldPos3D(), destination.GetWorldPos3D(), HailerGUI.Lenses);
+            if (lensGain > 1)
+                modifiers.Add(String.Format("Lensing gain reduces effective distance to {0:F0}%.", 100 / lensGain));
             return modifiers;
         }
 
