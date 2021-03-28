@@ -124,7 +124,6 @@ namespace ESLDCore
         public const string RnodeName = "RESOURCE";
         Logger log = new Logger("ESLDCore:ESLDBeacons: ");
 
-        private static int ECid = -1;
         public static Dictionary<int, ESLDBeacon> SnapshotModules { get; } = new Dictionary<int, ESLDBeacon>();
 
         public static ESLDBeacon InstantiateFromSnapshot(ProtoPartSnapshot partSnapshot, ProtoPartModuleSnapshot moduleSnapshot, int index = 0)
@@ -155,8 +154,8 @@ namespace ESLDCore
 
         public override void OnStart(StartState state)
         {
-            if (ECid < 0)
-                ECid = PartResourceLibrary.Instance.GetDefinition("ElectricCharge").id;
+            SetFieldsEventsActions(activated);
+
             if (part != null)
             {
                 if (animationName != "")
@@ -217,7 +216,6 @@ namespace ESLDCore
                 log.Warning("Generating new ESLDJumpResource for legacy beacon savefile");
                 jumpResources.Add(new ESLDJumpResource("Karborundum", ratio: 1));
             }
-            SetFieldsEventsActions(activated);
 
             ConfigNode[] settingsNode = GameDatabase.Instance.GetConfigNodes("ESLDSettings");
             if (settingsNode.Length < 1)
@@ -249,7 +247,7 @@ namespace ESLDCore
             }
         }
 
-        public override void OnFixedUpdate()
+        public void FixedUpdate()
         {
             for (int i = jumpResources.Count - 1; i >= 0; i--)
                 jumpResources[i].GetFuelOnBoard(part);
@@ -864,7 +862,7 @@ namespace ESLDCore
             name = node.GetValue("name");
             node.TryGetValue("ratio", ref ratio);
             fuelCheck = node.TryGetValue("fuelOnBoard", ref fuelOnBoard);
-            if (!node.TryGetValue("ECMult", ref ECMult) && HEResources.ContainsKey(name))
+            if (!node.TryGetValue("ECMult", ref ECMult) && HEResources != null && HEResources.ContainsKey(name))
                 ECMult = HEResources[name];
             node.TryGetValue("minEC", ref minEC);
             node.TryGetValue("neededToBoot", ref neededToBoot);

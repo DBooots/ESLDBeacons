@@ -14,14 +14,13 @@ namespace ESLDCore
         private Vessel vessel;
         private ESLDHailer hailer;
         public bool canHail = false;
-        private Texture2D ESLDButtonOn = new Texture2D(38, 38, TextureFormat.ARGB32, false);
+        private Texture2D ESLDButtonOn;// = new Texture2D(38, 38, TextureFormat.ARGB32, false);
         private FlightCamera mainCam = null;
         private bool isDazzling = false;
         private float currentFOV = 60;
         private float userFOV = 60;
         private float currentDistance = 1;
         private float userDistance = 1;
-        Logger log = new Logger("ESLDCore:HailerButton: ");
 
         public void Update()
         {
@@ -31,19 +30,20 @@ namespace ESLDCore
                 currentDistance = Mathf.Lerp(currentDistance, userDistance, 0.04f);
                 mainCam.SetFoV(currentFOV);
                 mainCam.SetDistance(currentDistance);
-                //log.debug("Distance: " + currentDistance);
                 if (userFOV + 0.25 >= currentFOV)
                 {
                     mainCam.SetFoV(userFOV);
                     mainCam.SetDistance(userDistance);
-                    log.Debug("Done messing with camera!");
                     isDazzling = false;
+                    Debug.Log("ESLDCore: Done messing with camera!");
                 }
             }
         }
 
         public void Awake()
         {
+            if (ESLDButtonOn == null)
+                ESLDButtonOn = GameDatabase.Instance.GetTexture("ESLDBeacons/Textures/launcher", false);
             if (Instance != null)
                 Destroy(Instance);
             Instance = this;
@@ -51,14 +51,13 @@ namespace ESLDCore
             GameEvents.onGameSceneLoadRequested.Add(OnSceneChangeRequest);
             GameEvents.onVesselChange.Add(OnVesselChange);
             GameEvents.onGUIApplicationLauncherDestroyed.Add(KillButton);
-            ESLDButtonOn = GameDatabase.Instance.GetTexture("ESLDBeacons/Textures/launcher", false);
             GameEvents.onGameSceneLoadRequested.Add(OnGameSceneLoadRequestedForAppLauncher);
             mainCam = FlightCamera.fetch;
         }
 
         public void OnDestroy()
         {
-            GameEvents.onGUIApplicationLauncherReady.Remove(OnGUIApplicationLauncherReady);
+            //GameEvents.onGUIApplicationLauncherReady.Remove(OnGUIApplicationLauncherReady);
             GameEvents.onGameSceneLoadRequested.Remove(OnSceneChangeRequest);
             GameEvents.onVesselChange.Remove(OnVesselChange);
             GameEvents.onGUIApplicationLauncherDestroyed.Remove(KillButton);
@@ -135,7 +134,7 @@ namespace ESLDCore
             currentFOV = 180;
             currentDistance = 0.1f;
             isDazzling = true;
-            log.Debug("Messing with camera!");
+            Debug.Log("ESLDCore: Messing with camera!");
         }
     }
 }
