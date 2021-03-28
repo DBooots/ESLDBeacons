@@ -78,10 +78,12 @@ namespace ESLDCore
         {
             SetupFSM();
             if ((state & StartState.Editor) == StartState.None)
+            {
                 fsm.StartFSM(deployStateOnLoad);
 
-            if (deployAnimator != null)
-                deployAnimator.OnMoving.Add(OnAnimationMove);
+                if (deployAnimator != null)
+                    deployAnimator.OnMoving.Add(OnAnimationMove);
+            }
 
             yield break;
         }
