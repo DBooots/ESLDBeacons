@@ -180,6 +180,8 @@ namespace ESLDCore
         public override void FixedUpdate()
         {
             base.FixedUpdate();
+            if (!HighLogic.LoadedSceneIsFlight)
+                return;
             if (activated && constantEC > 0)
             {
                 double ECgotten = part.RequestResource(PartResourceLibrary.Instance.GetDefinition("ElectricCharge").id, (double)(constantEC * TimeWarp.fixedDeltaTime));

@@ -252,6 +252,8 @@ namespace ESLDCore
 
         public void FixedUpdate()
         {
+            if (!HighLogic.LoadedSceneIsFlight)
+                return;
             for (int i = jumpResources.Count - 1; i >= 0; i--)
                 jumpResources[i].GetFuelOnBoard(part);
             opFloor = FindAcceptableAltitude(); // Keep updating tooltip display. Also, needed EC.
@@ -472,6 +474,7 @@ namespace ESLDCore
             float lensGain = ModuleESLDLens.GetLensingGainRatio(beacon.GetWorldPos3D(), destination.GetWorldPos3D(), HailerGUI.Lenses);
             if (lensGain > 1)
                 modifiers.Add(String.Format("Lensing gain reduces effective distance to {0:F0}%.", 100 / lensGain));
+
             return modifiers;
         }
 
