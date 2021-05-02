@@ -26,8 +26,6 @@ namespace ESLDCore
         [KSPField]
         public bool alwaysActive = false;
 
-        Logger log = new Logger("ESLDCore:ESLDTechbox: ");
-
         protected void ForceUpdateTechboxes()
         {
             foreach (ESLDBeacon beacon in vessel.FindPartModulesImplementing<ESLDBeacon>())
@@ -48,7 +46,7 @@ namespace ESLDCore
                 PlayAnimation(1f);
             }
             else
-                log.Warning("Can only activate when deactivated!");
+                Debug.LogWarning("ESLDCore:ESLDTechbox: Can only activate when deactivated!");
         }
         
         [KSPEvent(name = "TechBoxOff", active = false, guiActive = true, guiName = "Deactivate")]
@@ -62,7 +60,7 @@ namespace ESLDCore
                 PlayAnimation(-1f);
             }
             else
-                log.Warning("Can only deactivate when activated!");
+                Debug.LogWarning("ESLDCore:ESLDTechbox: Can only deactivate when activated!");
         }
 
         [KSPAction("Toggle TechBox")]
@@ -82,26 +80,22 @@ namespace ESLDCore
 
         public override void OnStart(StartState state)
         {
-            if (animationName != "")
+            if (anim != null)
             {
-                anim = part.FindModelAnimators(animationName).FirstOrDefault();
-                if (anim == null)
-                    log.Warning("Animation not found! " + animationName);
+#if DEBUG
+                Debug.Log("ESLDCore:ESLDTechbox: Animation found: " + animationName);
+#endif
+                anim[animationName].wrapMode = WrapMode.Once;
+                if (activated)
+                {
+                    anim[animationName].normalizedTime = 1;
+                    anim.Play(animationName);
+                }
                 else
                 {
-                    log.Debug("Animation found: " + animationName);
-                    anim[animationName].wrapMode = WrapMode.Once;
-                    if (activated)
-                    {
-                        anim[animationName].normalizedTime = 1;
-                        anim.Play(animationName);
-                    }
-                    else
-                    {
-                        anim[animationName].normalizedTime = 0;
-                        anim[animationName].normalizedSpeed = -10;
-                        anim.Play(animationName);
-                    }
+                    anim[animationName].normalizedTime = 0;
+                    anim[animationName].normalizedSpeed = -10;
+                    anim.Play(animationName);
                 }
             }
             if (alwaysActive)
@@ -131,6 +125,17 @@ namespace ESLDCore
             if (anim == null) return;
             anim[animationName].normalizedSpeed = speed;
             anim.Play(animationName);
+        }
+
+        public override void OnLoad(ConfigNode node)
+        {
+            base.OnLoad(node);
+            if (animationName != "")
+            {
+                anim = part.FindModelAnimators(animationName).FirstOrDefault();
+                if (anim == null)
+                    Debug.LogWarning("ESLDCore:ESLDTechbox: Animation not found! " + animationName);
+            }
         }
 
         public override string GetInfo()
